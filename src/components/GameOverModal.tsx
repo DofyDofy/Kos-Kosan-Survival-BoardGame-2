@@ -3,21 +3,16 @@ import { Player } from '../types';
 import { formatRupiah, getFinancialStatus, getStatusStyle } from '../utils/format';
 import { sounds } from '../utils/audio';
 import confetti from 'canvas-confetti';
-import { Trophy, RotateCcw, Crown, Database, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import { Trophy, RotateCcw, Crown } from 'lucide-react';
 import { motion } from 'motion/react';
-import { GameSaveStatus } from '../services/gameResults';
 
 interface GameOverModalProps {
   players: Player[];
-  saveStatus: GameSaveStatus;
-  onRetrySave: () => void;
   onRestart: () => void;
 }
 
 export const GameOverModal: React.FC<GameOverModalProps> = ({
   players,
-  saveStatus,
-  onRetrySave,
   onRestart,
 }) => {
   const sortedPlayers = [...players].sort((a, b) => b.balance - a.balance);
@@ -150,43 +145,6 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
               );
             })}
           </div>
-        </div>
-
-        {/* Status sinkronisasi hasil permainan */}
-        <div className="w-full mb-4 rounded-xl border border-stone-800 bg-stone-950/60 p-3">
-          {saveStatus === 'saving' && (
-            <div className="flex items-center gap-2 text-xs text-sky-300">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              <span>Menyimpan hasil permainan ke database...</span>
-            </div>
-          )}
-          {saveStatus === 'saved' && (
-            <div className="flex items-center gap-2 text-xs text-emerald-300">
-              <CheckCircle2 className="w-4 h-4" />
-              <span>Hasil permainan berhasil tersimpan di Supabase.</span>
-            </div>
-          )}
-          {saveStatus === 'error' && (
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2 text-xs text-rose-300">
-                <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                <span>Hasil belum tersimpan. Periksa koneksi atau konfigurasi database.</span>
-              </div>
-              <button
-                type="button"
-                onClick={onRetrySave}
-                className="flex-shrink-0 rounded-lg bg-stone-800 px-2.5 py-1.5 text-[10px] font-black uppercase text-stone-100 hover:bg-stone-700"
-              >
-                Coba Lagi
-              </button>
-            </div>
-          )}
-          {saveStatus === 'idle' && (
-            <div className="flex items-center gap-2 text-xs text-stone-400">
-              <Database className="w-4 h-4" />
-              <span>Menyiapkan penyimpanan hasil permainan.</span>
-            </div>
-          )}
         </div>
 
         {/* Tombol Main Lagi */}

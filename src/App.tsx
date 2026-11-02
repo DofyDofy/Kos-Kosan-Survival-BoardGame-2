@@ -19,7 +19,6 @@ import {
 import { CardDef, GameLog, Player, TileCoord } from './types';
 import { formatRupiah } from './utils/format';
 import { sounds } from './utils/audio';
-import { saveGameResults, GameSaveStatus } from './services/gameResults';
 
 import { GameBoard } from './components/GameBoard';
 import { TurnTab } from './components/TurnTab';
@@ -46,6 +45,9 @@ import {
 } from 'lucide-react';
 
 export default function App() {
+  const normalizedPath = window.location.pathname.replace(/\/+$/, '') || '/';
+  const isAdminRoute = normalizedPath === '/admin';
+
   // ==========================================
   // STATE TERPUSAT (Centralized State)
   // ==========================================
@@ -84,12 +86,11 @@ export default function App() {
   const [isCardsDebugOpen, setIsCardsDebugOpen] = useState<boolean>(false);
   const [isGameOver, setIsGameOver] = useState<boolean>(false);
   const [isMuted, setIsMuted] = useState<boolean>(false);
-  const [gameSessionId, setGameSessionId] = useState<string>(() => crypto.randomUUID());
-  const [gameSaveStatus, setGameSaveStatus] = useState<GameSaveStatus>('idle');
-  const [gameSaveAttempt, setGameSaveAttempt] = useState<number>(0);
 
-  // Keyboard shortcut: Tekan 'D' atau 'd' untuk membuka/menutup Mode Debug Kartu
+  // Shortcut debug hanya aktif di URL /admin.
   useEffect(() => {
+    if (!isAdminRoute) return;
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'd' || e.key === 'D') {
         const tagName = document.activeElement?.tagName?.toUpperCase();
@@ -97,33 +98,13 @@ export default function App() {
         setIsCardsDebugOpen((prev) => !prev);
       }
     };
+
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [isAdminRoute]);
 
   const activePlayer = players[activePlayerIndex] || players[0];
 
-  // Simpan hasil akhir permainan ke Supabase melalui Vercel Function.
-  // Secret key Supabase tetap berada di server dan tidak pernah dikirim ke browser.
-  useEffect(() => {
-    if (!isGameOver) return;
-
-    let isCancelled = false;
-    setGameSaveStatus('saving');
-
-    saveGameResults(gameSessionId, players)
-      .then(() => {
-        if (!isCancelled) setGameSaveStatus('saved');
-      })
-      .catch((error) => {
-        console.error('[SUPABASE SAVE FAILED]', error);
-        if (!isCancelled) setGameSaveStatus('error');
-      });
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [isGameOver, gameSessionId, players, gameSaveAttempt]);
 
   // Helper tambah catatan riwayat (Log)
   const addLog = (
@@ -445,9 +426,6 @@ export default function App() {
   // Mulai permainan baru dari Layar Awal (Start Screen)
   const handleStartGame = (count: number, finalNames: string[], rawNames: string[]) => {
     setSelectedPlayerCount(count);
-    setGameSessionId(crypto.randomUUID());
-    setGameSaveStatus('idle');
-    setGameSaveAttempt(0);
     setSavedPlayerNames(rawNames);
 
     const newPlayers = INITIAL_PLAYERS.slice(0, count).map((p, idx) => ({
@@ -492,8 +470,6 @@ export default function App() {
   // Mulai ulang permainan (Kembali ke Layar Awal dengan jumlah & nama pemain sebelumnya tetap terisi)
   const handleRestartGame = () => {
     setIsRestartConfirmOpen(false);
-    setGameSaveStatus('idle');
-    setGameSaveAttempt(0);
     setIsGameStarted(false);
     setIsGameOver(false);
     setActivePlayerIndex(0);
@@ -554,16 +530,47 @@ export default function App() {
           onStartGame={handleStartGame}
           onOpenRules={() => setIsRulesModalOpen(true)}
         />
-        {/* Modal Status Aset jika ingin diperiksa */}
-        <AssetStatusModal
-          isOpen={isAssetModalOpen}
-          onClose={() => setIsAssetModalOpen(false)}
+        {isAdminRoute && (
+          <div className="fixed top-3 right-3 z-40 flex items-center gap-2 rounded-2xl border border-purple-300/70 dark:border-purple-800 bg-white/95 dark:bg-stone-900/95 p-2 shadow-lg backdrop-blur">
+            <span className="hidden sm:inline px-2 text-[10px] font-black uppercase tracking-wider text-purple-700 dark:text-purple-300">
+              Admin
+            </span>
+            <button
+              type="button"
+              onClick={() => setIsAssetModalOpen(true)}
+              className="flex items-center gap-1.5 rounded-xl bg-stone-100 dark:bg-stone-800 px-3 py-2 text-xs font-bold text-stone-700 dark:text-stone-200 hover:bg-stone-200 dark:hover:bg-stone-700"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              <span>Cek Aset</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsCardsDebugOpen(true)}
+              className="flex items-center gap-1.5 rounded-xl bg-purple-100 dark:bg-purple-950/40 px-3 py-2 text-xs font-bold text-purple-700 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900/60"
+            >
+              <Bug className="w-3.5 h-3.5" />
+              <span>Debug Kartu</span>
+            </button>
+          </div>
+        )}
+
+        <RulesModal
+          isOpen={isRulesModalOpen}
+          onClose={() => setIsRulesModalOpen(false)}
         />
-        {/* Modal Debug Kartu jika dibuka dari shortcut D */}
-        <DebugCardsModal
-          isOpen={isCardsDebugOpen}
-          onClose={() => setIsCardsDebugOpen(false)}
-        />
+
+        {isAdminRoute && (
+          <>
+            <AssetStatusModal
+              isOpen={isAssetModalOpen}
+              onClose={() => setIsAssetModalOpen(false)}
+            />
+            <DebugCardsModal
+              isOpen={isCardsDebugOpen}
+              onClose={() => setIsCardsDebugOpen(false)}
+            />
+          </>
+        )}
       </>
     );
   }
@@ -593,24 +600,25 @@ export default function App() {
 
           {/* Action Buttons */}
           <div className="flex items-center gap-2">
-            {/* Tombol Mode Kalibrasi (Sesuai Permintaan Spesifik) */}
-            <button
-              onClick={() => {
-                setIsCalibrating(!isCalibrating);
-                if (!isCalibrating) {
-                  setIsCalibrationModalOpen(true);
-                }
-              }}
-              className={`flex items-center gap-1.5 text-xs font-bold py-2 px-3 rounded-xl transition-all ${
-                isCalibrating
-                  ? 'bg-amber-500 text-stone-950 ring-2 ring-amber-300 shadow-md'
-                  : 'bg-stone-200 dark:bg-stone-800 hover:bg-stone-300 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-200'
-              }`}
-              title="Aktifkan Mode Kalibrasi Koordinat Petak"
-            >
-              <Crosshair className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Mode Kalibrasi</span>
-            </button>
+            {isAdminRoute && (
+              <button
+                onClick={() => {
+                  setIsCalibrating(!isCalibrating);
+                  if (!isCalibrating) {
+                    setIsCalibrationModalOpen(true);
+                  }
+                }}
+                className={`flex items-center gap-1.5 text-xs font-bold py-2 px-3 rounded-xl transition-all ${
+                  isCalibrating
+                    ? 'bg-amber-500 text-stone-950 ring-2 ring-amber-300 shadow-md'
+                    : 'bg-stone-200 dark:bg-stone-800 hover:bg-stone-300 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-200'
+                }`}
+                title="Aktifkan Mode Kalibrasi Koordinat Petak"
+              >
+                <Crosshair className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Mode Kalibrasi</span>
+              </button>
+            )}
 
             {/* Tombol Buku Saku Anak Kos */}
             <button
@@ -622,25 +630,29 @@ export default function App() {
               <span className="hidden sm:inline">Buku Saku</span>
             </button>
 
-            {/* Tombol Status Aset */}
-            <button
-              onClick={() => setIsAssetModalOpen(true)}
-              className="flex items-center gap-1.5 text-xs font-bold py-2 px-3 rounded-xl bg-stone-200 dark:bg-stone-800 hover:bg-stone-300 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-200 transition-all cursor-pointer"
-              title="Daftar dan Status File Aset Visual"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              <span className="hidden sm:inline">Cek Aset</span>
-            </button>
-
-            {/* Tombol Mode Uji / Debug Kartu (Shortcut: D) */}
-            <button
-              onClick={() => setIsCardsDebugOpen(true)}
-              className="flex items-center gap-1.5 text-xs font-bold py-2 px-3 rounded-xl bg-purple-100 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900/60 border border-purple-300 dark:border-purple-800 transition-all cursor-pointer"
-              title="Mode Uji / Debug Kartu 15 Event (Shortcut keyboard: D)"
-            >
-              <Bug className="w-3.5 h-3.5 text-purple-500" />
-              <span className="hidden sm:inline">Debug Kartu</span>
-            </button>
+            {isAdminRoute && (
+              <>
+              {/* Tombol Status Aset */}
+              <button
+                onClick={() => setIsAssetModalOpen(true)}
+                className="flex items-center gap-1.5 text-xs font-bold py-2 px-3 rounded-xl bg-stone-200 dark:bg-stone-800 hover:bg-stone-300 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-200 transition-all cursor-pointer"
+                title="Daftar dan Status File Aset Visual"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                <span className="hidden sm:inline">Cek Aset</span>
+              </button>
+  
+              {/* Tombol Mode Uji / Debug Kartu (Shortcut: D) */}
+              <button
+                onClick={() => setIsCardsDebugOpen(true)}
+                className="flex items-center gap-1.5 text-xs font-bold py-2 px-3 rounded-xl bg-purple-100 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900/60 border border-purple-300 dark:border-purple-800 transition-all cursor-pointer"
+                title="Mode Uji / Debug Kartu 15 Event (Shortcut keyboard: D)"
+              >
+                <Bug className="w-3.5 h-3.5 text-purple-500" />
+                <span className="hidden sm:inline">Debug Kartu</span>
+              </button>
+              </>
+            )}
 
             {/* Tombol Audio Toggle */}
             <button
@@ -706,8 +718,8 @@ export default function App() {
           activeCard !== null ||
           isGameOver ||
           isRulesModalOpen ||
-          isAssetModalOpen ||
-          isCalibrationModalOpen ||
+          (isAdminRoute && isAssetModalOpen) ||
+          (isAdminRoute && isCalibrationModalOpen) ||
           !!activePlayer?.isFinished
         }
         lastRoll={lastRoll}
@@ -723,22 +735,25 @@ export default function App() {
         />
       )}
 
-      {/* Modal Kalibrasi Koordinat */}
-      <CalibrationModal
-        isOpen={isCalibrationModalOpen}
-        onClose={() => setIsCalibrationModalOpen(false)}
-        tileCoords={tileCoords}
-        currentTargetTile={calibrationTargetTile}
-        onSelectTargetTile={(tile) => setCalibrationTargetTile(tile)}
-        onApplyCoords={handleApplyCoords}
-        onResetCoords={handleResetCoords}
-      />
+      {isAdminRoute && (
+        <>
+          {/* Tool developer hanya tersedia melalui /admin */}
+          <CalibrationModal
+            isOpen={isCalibrationModalOpen}
+            onClose={() => setIsCalibrationModalOpen(false)}
+            tileCoords={tileCoords}
+            currentTargetTile={calibrationTargetTile}
+            onSelectTargetTile={(tile) => setCalibrationTargetTile(tile)}
+            onApplyCoords={handleApplyCoords}
+            onResetCoords={handleResetCoords}
+          />
 
-      {/* Modal Audit & Status Aset Visual */}
-      <AssetStatusModal
-        isOpen={isAssetModalOpen}
-        onClose={() => setIsAssetModalOpen(false)}
-      />
+          <AssetStatusModal
+            isOpen={isAssetModalOpen}
+            onClose={() => setIsAssetModalOpen(false)}
+          />
+        </>
+      )}
 
       {/* Modal Buku Saku Anak Kos (Panduan & Aturan) */}
       <RulesModal
@@ -746,18 +761,17 @@ export default function App() {
         onClose={() => setIsRulesModalOpen(false)}
       />
 
-      {/* Modal Uji / Debug Kartu 15 Event */}
-      <DebugCardsModal
-        isOpen={isCardsDebugOpen}
-        onClose={() => setIsCardsDebugOpen(false)}
-      />
+      {isAdminRoute && (
+        <DebugCardsModal
+          isOpen={isCardsDebugOpen}
+          onClose={() => setIsCardsDebugOpen(false)}
+        />
+      )}
 
       {/* Modal Akhir Permainan (Semua Selesai) */}
       {isGameOver && (
         <GameOverModal
           players={players}
-          saveStatus={gameSaveStatus}
-          onRetrySave={() => setGameSaveAttempt((attempt) => attempt + 1)}
           onRestart={handleRestartGame}
         />
       )}
